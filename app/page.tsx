@@ -2,20 +2,21 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { createClient } from "@supabase/supabase-js";
 import { 
   Menu, X, Globe, MapPin, Phone, MessageCircle, Lock, 
   Edit, Trash2, Plus, LogOut, ChevronRight, Sparkles, UploadCloud,
   Image as ImageIcon, Map, ShieldCheck, Video, Type, User, XCircle
 } from "lucide-react";
 
+// --- SUPABASE SETUP (SAFE VERSION) ---
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder_key";
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
 // Fallback SVGs
 const FALLBACK_IMG = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600"><rect width="600" height="600" fill="%232A0813"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="serif" font-size="24" fill="%23D4AF37">Sikarwar Image</text></svg>`;
 const ABOUT_IMG = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600"><rect width="800" height="600" fill="%231a050b"/><path d="M400 100 L600 500 L200 500 Z" fill="none" stroke="%23D4AF37" stroke-width="2" opacity="0.5"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="serif" font-size="28" fill="%23D4AF37">Heritage Photo</text></svg>`;
-
-const initialProducts = [
-  { id: "1", code: "SKR-PT-101", nameEN: "Royal Pata Chain", nameHI: "शाही पटा चेन", category: "Pata Chain", image: FALLBACK_IMG },
-  { id: "2", code: "SKR-KB-205", nameEN: "Classic Karb Chain", nameHI: "क्लासिक करब चेन", category: "Karb Chain", image: FALLBACK_IMG },
-];
 
 export default function SikarwarWebsite() {
   const [isAppLoading, setIsAppLoading] = useState(true);
@@ -33,12 +34,11 @@ export default function SikarwarWebsite() {
   const [adminTab, setAdminTab] = useState<"products" | "homeConfig" | "aboutConfig" | "business" | "brand">("products");
   
   // Products State
-  const [products, setProducts] = useState(initialProducts);
+  const [products, setProducts] = useState<any[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({ code: "", nameEN: "", nameHI: "", category: "Pata Chain", image: "" });
 
-  // --- CMS STATE ---
-
+  // CMS State
   const [brand, setBrand] = useState({
     logoLetter: "S",
     logoText: "SIKARWAR",
@@ -89,7 +89,24 @@ export default function SikarwarWebsite() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // --- DATABASE FUNCTIONS ---
+  const fetchProducts = async () => {
+    const { data, error } = await supabase.from('products').select('*');
+    if (data) {
+      const formatted = data.map(item => ({
+        id: item.id,
+        code: item.code,
+        nameEN: item.name_en,
+        nameHI: item.name_hi,
+        category: item.category,
+        image: item.image
+      }));
+      setProducts(formatted);
+    }
+  };
+
   useEffect(() => {
+    fetchProducts();
     const timer = setTimeout(() => setIsAppLoading(false), 2000);
     return () => clearTimeout(timer);
   }, []);
@@ -129,17 +146,33 @@ export default function SikarwarWebsite() {
     }
   };
 
-  const handleSaveProduct = (e: React.FormEvent) => {
+  const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     const finalImage = formData.image.trim() !== "" ? formData.image : FALLBACK_IMG;
+    
     if (editingId) {
-      setProducts(products.map(p => p.id === editingId ? { ...formData, image: finalImage, id: editingId } : p));
+      await supabase.from('products').update({
+        code: formData.code,
+        name_en: formData.nameEN,
+        name_hi: formData.nameHI,
+        category: formData.category,
+        image: finalImage
+      }).eq('id', editingId);
       setEditingId(null);
     } else {
-      setProducts([{ ...formData, id: Date.now().toString(), image: finalImage }, ...products]);
+      await supabase.from('products').insert([{
+        id: Date.now().toString(),
+        code: formData.code,
+        name_en: formData.nameEN,
+        name_hi: formData.nameHI,
+        category: formData.category,
+        image: finalImage
+      }]);
     }
+    
     setFormData({ code: "", nameEN: "", nameHI: "", category: "Pata Chain", image: "" });
     if (fileInputRef.current) fileInputRef.current.value = "";
+    fetchProducts();
   };
 
   const handleEdit = (product: any) => {
@@ -149,9 +182,10 @@ export default function SikarwarWebsite() {
     window.scrollTo(0, 0);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (window.confirm("Are you sure you want to delete this product?")) {
-      setProducts(products.filter(p => p.id !== id));
+      await supabase.from('products').delete().eq('id', id);
+      fetchProducts();
     }
   };
 
@@ -203,7 +237,6 @@ export default function SikarwarWebsite() {
         )}
       </AnimatePresence>
 
-      {/* PRODUCT DETAIL MODAL */}
       <AnimatePresence>
         {selectedProduct && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
@@ -236,8 +269,6 @@ export default function SikarwarWebsite() {
       <a href={getWhatsAppUrl()} target="_blank" rel="noopener noreferrer" className="fixed bottom-6 right-6 z-40 bg-[#25D366] text-white p-4 rounded-full shadow-2xl hover:scale-110 transition-transform flex items-center justify-center"><MessageCircle size={30} /></a>
 
       <main className="pt-20 flex-grow">
-        
-        {/* HOMEPAGE */}
         {activePage === "home" && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col">
             <section className="relative min-h-[88vh] bg-[#2A0813] flex flex-col md:flex-row items-center justify-between overflow-hidden">
@@ -280,7 +311,6 @@ export default function SikarwarWebsite() {
           </motion.div>
         )}
 
-        {/* CATALOGUES */}
         {["chains", "jewellery"].includes(activePage) && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-7xl mx-auto px-6 py-12">
             <h2 className="text-3xl md:text-5xl font-serif text-[#2A0813] mb-8">{activePage === "chains" ? (lang === "EN" ? "Chain Collection" : "चेन कलेक्शन") : (lang === "EN" ? "Gold Jewellery" : "स्वर्ण आभूषण")}</h2>
@@ -307,11 +337,11 @@ export default function SikarwarWebsite() {
                   </div>
                 </div>
               ))}
+              {products.length === 0 && <p className="text-gray-500">No products available yet. Add some from the Admin panel.</p>}
             </div>
           </motion.div>
         )}
 
-        {/* ABOUT CMS PAGE */}
         {activePage === "about" && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-7xl mx-auto px-6 py-12">
             <div className="text-center mb-16">
@@ -341,7 +371,6 @@ export default function SikarwarWebsite() {
           </motion.div>
         )}
 
-        {/* CONTACT PAGE */}
         {activePage === "contact" && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-6xl mx-auto px-6 py-12">
             <h2 className="text-3xl md:text-5xl font-serif text-[#2A0813] mb-12 text-center">{lang === "EN" ? "Contact & Location" : "संपर्क एवं स्थान"}</h2>
@@ -372,7 +401,6 @@ export default function SikarwarWebsite() {
           </motion.div>
         )}
 
-        {/* CMS ADMIN DASHBOARD */}
         {activePage === "admin" && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-7xl mx-auto px-6 py-12">
             {!isAuthenticated ? (
@@ -388,8 +416,6 @@ export default function SikarwarWebsite() {
               </div>
             ) : (
               <div className="flex flex-col md:flex-row gap-8">
-                
-                {/* Admin Sidebar */}
                 <div className="w-full md:w-64 shrink-0 flex flex-col gap-2">
                   <div className="bg-[#2A0813] p-4 rounded-xl mb-4 text-center"><ShieldCheck className="text-[#D4AF37] mx-auto mb-2" size={24} /><h3 className="text-[#F5F5DC] font-serif">Site CMS</h3></div>
                   <button onClick={() => setAdminTab("products")} className={`flex items-center gap-3 p-3 rounded-lg text-sm font-bold ${adminTab === "products" ? "bg-[#D4AF37] text-[#2A0813]" : "bg-white border"}`}><Sparkles size={18} /> Manage Inventory</button>
@@ -402,10 +428,7 @@ export default function SikarwarWebsite() {
                   <button onClick={() => setIsAuthenticated(false)} className="mt-8 p-3 rounded-lg font-bold text-red-600 bg-red-50 border border-red-100 flex justify-center gap-2"><LogOut size={18} /> Logout</button>
                 </div>
 
-                {/* Admin Content Panel */}
                 <div className="flex-grow bg-white p-8 rounded-3xl shadow-xl border border-gray-200">
-                  
-                  {/* TAB: PRODUCTS */}
                   {adminTab === "products" && (
                     <div className="grid lg:grid-cols-2 gap-8">
                       <div>
@@ -424,7 +447,7 @@ export default function SikarwarWebsite() {
                             </label>
                           </div>
                           <div className="flex gap-2">
-                            <button type="submit" className="flex-1 bg-[#2A0813] text-[#D4AF37] py-2 rounded font-bold">{editingId ? "Update" : "Save"}</button>
+                            <button type="submit" className="flex-1 bg-[#2A0813] text-[#D4AF37] py-2 rounded font-bold">{editingId ? "Update" : "Save to Database"}</button>
                             {editingId && <button type="button" onClick={() => {setEditingId(null); setFormData({code: "", nameEN: "", nameHI: "", category: "Pata Chain", image: ""});}} className="px-4 bg-gray-200 rounded font-bold">Cancel</button>}
                           </div>
                         </form>
@@ -447,7 +470,6 @@ export default function SikarwarWebsite() {
                     </div>
                   )}
 
-                  {/* TAB: HOMEPAGE SETUP */}
                   {adminTab === "homeConfig" && (
                     <div className="space-y-10">
                       <div>
@@ -492,7 +514,6 @@ export default function SikarwarWebsite() {
                     </div>
                   )}
 
-                  {/* TAB: ABOUT PAGE SETUP */}
                   {adminTab === "aboutConfig" && (
                     <div className="grid md:grid-cols-2 gap-10">
                       <div className="space-y-4">
@@ -515,7 +536,6 @@ export default function SikarwarWebsite() {
                     </div>
                   )}
 
-                  {/* TAB: BUSINESS / MAPS */}
                   {adminTab === "business" && (
                     <div className="max-w-2xl space-y-4">
                       <h3 className="text-2xl font-serif text-[#2A0813] mb-4 border-b pb-2">Map & Contact Details</h3>
@@ -523,11 +543,9 @@ export default function SikarwarWebsite() {
                       <div><label className="text-xs font-bold text-gray-500">Phone 1</label><input type="text" value={business.phone1} onChange={e => setBusiness({...business, phone1: e.target.value})} className="w-full border p-2 rounded"/></div>
                       <div><label className="text-xs font-bold text-gray-500">Phone 2</label><input type="text" value={business.phone2} onChange={e => setBusiness({...business, phone2: e.target.value})} className="w-full border p-2 rounded"/></div>
                       <div><label className="text-xs font-bold text-gray-500">Address (EN)</label><textarea rows={2} value={business.addressEN} onChange={e => setBusiness({...business, addressEN: e.target.value})} className="w-full border p-2 rounded"/></div>
-                      <div className="pt-4"><span className="text-sm text-green-600 bg-green-50 p-2 rounded">✓ Changes auto-save instantly to the contact page.</span></div>
                     </div>
                   )}
 
-                  {/* TAB: BRANDING */}
                   {adminTab === "brand" && (
                     <div className="max-w-2xl space-y-4">
                       <h3 className="text-2xl font-serif text-[#2A0813] mb-4 border-b pb-2">Brand Name & Links</h3>
@@ -545,7 +563,6 @@ export default function SikarwarWebsite() {
         )}
       </main>
 
-      {/* Global Footer */}
       <footer className="bg-[#1A050B] text-[#F5F5DC] pt-16 pb-8 border-t-4 border-[#D4AF37]">
         <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-3 gap-12 mb-12">
           <div>
